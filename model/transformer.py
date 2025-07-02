@@ -257,9 +257,9 @@ class SEDD(nn.Module, PyTorchModelHubMixin):
         )
 
 
-    def forward(self, indices, sigma):
+    def forward(self, indices, sigma):  # indices: [B, L], sigma: [B]
 
-        x = self.vocab_embed(indices)
+        x = self.vocab_embed(indices)       # x: [B, L, H] H: hidden_dim
         c = F.silu(self.sigma_map(sigma))
 
         rotary_cos_sin = self.rotary_emb(x)
@@ -278,4 +278,4 @@ class SEDD(nn.Module, PyTorchModelHubMixin):
             
         x = torch.scatter(x, -1, indices[..., None], torch.zeros_like(x[..., :1]))
 
-        return x
+        return x            # [B, L, V]

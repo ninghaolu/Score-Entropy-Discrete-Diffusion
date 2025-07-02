@@ -8,29 +8,31 @@ from model import utils as mutils
 
 def get_loss_fn(noise, graph, train, sampling_eps=1e-3, lv=False):
 
-    def loss_fn(model, batch, cond=None, t=None, perturbed_batch=None):
+    def loss_fn(model, batch, cond=None, t=None, perturbed_batch=None):     
         """
         Batch shape: [B, L] int. D given from graph
         """
+
+        # batch: [B, L], B: batch_size, L: sequence_length. Each token in this batch is an integer index in the range [0, D-1].
 
         if t is None:
             if lv:
                 raise NotImplementedError("Yeah I gotta do this later")
             else:
-                t = (1 - sampling_eps) * torch.rand(batch.shape[0], device=batch.device) + sampling_eps
+                t = (1 - sampling_eps) * torch.rand(batch.shape[0], device=batch.device) + sampling_eps     # t (timestep): [B]
             
-        sigma, dsigma = noise(t)
+        sigma, dsigma = noise(t)      # sigma: [B], dsigma is the gradient of sigma
         
         if perturbed_batch is None:
-            perturbed_batch = graph.sample_transition(batch, sigma[:, None])
+            perturbed_batch = graph.sample_transition(batch, sigma[:, None])        # perturbed_batch: [B, L], sigma[:, None]: [B] -> [B,1] for further broadcasting, the same as sigma.unsqueeze(1)
 
         log_score_fn = mutils.get_score_fn(model, train=train, sampling=False)
-        log_score = log_score_fn(perturbed_batch, sigma)
-        loss = graph.score_entropy(log_score, sigma[:, None], perturbed_batch, batch)
+        log_score = log_score_fn(perturbed_batch, sigma)        # [B, L, V(D)] predict log prob for each position
+        loss = graph.score_entropy(log_score, sigma[:, None], perturbed_batch, batch)   # [B, L]
 
-        loss = (dsigma[:, None] * loss).sum(dim=-1)
+        loss = (dsigma[:, None] * loss).sum(dim=-1) # [B]
 
-        return loss
+        return loss # [B]
 
     return loss_fn
 

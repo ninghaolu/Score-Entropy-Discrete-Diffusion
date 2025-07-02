@@ -47,10 +47,10 @@ class GeometricNoise(Noise, nn.Module):
         self.empty = nn.Parameter(torch.tensor(0.0))
 
     def rate_noise(self, t):
-        return self.sigmas[0] ** (1 - t) * self.sigmas[1] ** t * (self.sigmas[1].log() - self.sigmas[0].log())
+        return self.sigmas[0] ** (1 - t) * self.sigmas[1] ** t * (self.sigmas[1].log() - self.sigmas[0].log())      # [B]
 
     def total_noise(self, t):
-        return self.sigmas[0] ** (1 - t) * self.sigmas[1] ** t
+        return self.sigmas[0] ** (1 - t) * self.sigmas[1] ** t  # [B]
 
 
 class LogLinearNoise(Noise, nn.Module):
@@ -58,7 +58,7 @@ class LogLinearNoise(Noise, nn.Module):
     Log Linear noise schedule built so that 1 - 1/e^(n(t)) interpolates between 0 and ~1
     when t goes from 0 to 1. Used for absorbing
 
-    Total noise is -log(1 - (1 - eps) * t), so the sigma will be (1 - eps) * t
+    Total noise is -log(1 - (1 - eps) * t), so the sigma will be (1 - eps) * t      # noise(0) -> 0, noise(1) -> \infty
     """
     def __init__(self, eps=1e-3):
         super().__init__()
@@ -66,8 +66,8 @@ class LogLinearNoise(Noise, nn.Module):
         self.empty = nn.Parameter(torch.tensor(0.0))
 
     def rate_noise(self, t):
-        return (1 - self.eps) / (1 - (1 - self.eps) * t)
+        return (1 - self.eps) / (1 - (1 - self.eps) * t)    # [B]
 
     def total_noise(self, t):
-        return -torch.log1p(-(1 - self.eps) * t)
+        return -torch.log1p(-(1 - self.eps) * t)        # log1p = log (1 + x) with more numerical stability     # [B]
 

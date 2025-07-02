@@ -75,15 +75,15 @@ class NonePredictor(Predictor):
 @register_predictor(name="analytic")
 class AnalyticPredictor(Predictor):
     def update_fn(self, score_fn, x, t, step_size):
-        curr_sigma = self.noise(t)[0]
-        next_sigma = self.noise(t - step_size)[0]
-        dsigma = curr_sigma - next_sigma
+        curr_sigma = self.noise(t)[0]       # [B, 1] → [B]
+        next_sigma = self.noise(t - step_size)[0]       # [B, 1] → [B]
+        dsigma = curr_sigma - next_sigma        # [B]
 
-        score = score_fn(x, curr_sigma)
+        score = score_fn(x, curr_sigma)     # input: x [B, L], sigma [B], output: score: [B, L, V]
 
-        stag_score = self.graph.staggered_score(score, dsigma)
-        probs = stag_score * self.graph.transp_transition(x, dsigma)
-        return sample_categorical(probs)
+        stag_score = self.graph.staggered_score(score, dsigma)      # [B, L, V]
+        probs = stag_score * self.graph.transp_transition(x, dsigma)    # [B, L, V]
+        return sample_categorical(probs)     # [B, L]
 
     
 class Denoiser:
@@ -127,14 +127,14 @@ def get_pc_sampler(graph, noise, batch_dims, predictor, steps, denoise=True, eps
     @torch.no_grad()
     def pc_sampler(model):
         sampling_score_fn = mutils.get_score_fn(model, train=False, sampling=True)
-        x = graph.sample_limit(*batch_dims).to(device)
+        x = graph.sample_limit(*batch_dims).to(device)      # [B, L]
         timesteps = torch.linspace(1, eps, steps + 1, device=device)
         dt = (1 - eps) / steps
 
         for i in range(steps):
-            t = timesteps[i] * torch.ones(x.shape[0], 1, device=device)
-            x = projector(x)
-            x = predictor.update_fn(sampling_score_fn, x, t, dt)
+            t = timesteps[i] * torch.ones(x.shape[0], 1, device=device)   # shape: [B, 1]
+            x = projector(x)    # shape: [B, L]
+            x = predictor.update_fn(sampling_score_fn, x, t, dt)    # shape: [B, L]
             
 
         if denoise:

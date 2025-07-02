@@ -122,7 +122,7 @@ class Uniform(Graph):
 
     @property
     def dim(self):
-        return self._dim
+        return self._dim        # size of vocab: D
     
     @property
     def absorb(self):
@@ -144,12 +144,12 @@ class Uniform(Graph):
     
     def transp_transition(self, i, sigma):
         return self.transition(i, sigma)
-
+    
     def sample_transition(self, i, sigma):
-        move_chance = 1 - (-sigma).exp()
-        move_indices = torch.rand(*i.shape, device=i.device) < move_chance
-        i_pert = torch.where(move_indices, torch.randint_like(i, self.dim), i)
-        return i_pert
+        move_chance = 1 - (-sigma).exp()        # [B, 1]
+        move_indices = torch.rand(*i.shape, device=i.device) < move_chance  # rand → shape [B, L]；move_chance → broadcast to [B, L]
+        i_pert = torch.where(move_indices, torch.randint_like(i, self.dim), i)  # torch.randint_like(i, self.dim)： generate a tensor of the same shape as i(batch) and sample values from [0, self.dim)
+        return i_pert   # [B, L]
 
     def staggered_score(self, score, dsigma):
         dim = score.shape[-1]
@@ -164,11 +164,24 @@ class Uniform(Graph):
             sigma < 0.5,
             torch.expm1(sigma),
             torch.exp(sigma) - 1
-        )
+        )       # [B, 1]
         ratio = 1 - self.dim / (esigm1 + self.dim)
 
         # negative term
+        # score.mean(dim=-1): [B, L]; torch.gather(score, -1, x[..., None]): gather: [B, L, 1] → squeeze → [B, L]
+
+        # score.mean(dim=-1) : means the model's average score across all vocabulary tokens at each position
+
+        # torch.gather(score, -1, x[..., None]) is the same as the following 2 lines
+        # selected_logits = torch.gather(score, -1, x.unsqueeze(-1))  # shape: [B, T, 1]
+        # selected_logits = selected_logits.squeeze(-1)               # shape: [B, T]
+        # extracts the score (logit) that the model assigns to the ground truth token
+
+        # This difference reflects the model's relative confidence in its prediction for the true token,
+        # under the perturbed input (noisy batch).  
+
         neg_term = score.mean(dim=-1) - torch.gather(score, -1, x[..., None]).squeeze(-1) / self.dim
+
         # no move means scaling by the uniform ratio. move means alter only one ratio away from 1
         neg_term = torch.where(
             x == x0,
@@ -177,7 +190,7 @@ class Uniform(Graph):
         )
 
         # constant factor
-        const = torch.where(
+        const = torch.where(        # [B, L] 
             x == x0,
             (self.dim - 1) / self.dim * ratio * (ratio.log() - 1),
             ((-ratio.log() - 1) / ratio - (self.dim - 2)) / self.dim 
@@ -186,7 +199,7 @@ class Uniform(Graph):
         #positive term
         sexp = score.exp()
         pos_term = sexp.mean(dim=-1) - torch.gather(sexp, -1, x[..., None]).squeeze(-1) / self.dim
-        return pos_term - neg_term + const
+        return pos_term - neg_term + const       # shape: [B, L]
 
 
 class Absorbing(Graph):
