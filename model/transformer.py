@@ -268,14 +268,14 @@ class SEDD(nn.Module, PyTorchModelHubMixin):
             for i in range(len(self.blocks)):
                 x = self.blocks[i](x, rotary_cos_sin, c, seqlens=None)
 
-            x = self.output_layer(x, c)
+            x = self.output_layer(x, c)     # logits: [B, L, V]
 
 
-        if self.scale_by_sigma:
+        if self.scale_by_sigma:         # scaling
             assert self.absorb, "Haven't configured this to work."
             esigm1_log = torch.where(sigma < 0.5, torch.expm1(sigma), sigma.exp() - 1).log().to(x.dtype)[:, None, None]
             x = x - esigm1_log - np.log(x.shape[-1] - 1)# this will be approximately averaged at 0
             
-        x = torch.scatter(x, -1, indices[..., None], torch.zeros_like(x[..., :1]))
+        x = torch.scatter(x, -1, indices[..., None], torch.zeros_like(x[..., :1]))     # exclude itself from loss
 
         return x            # [B, L, V]

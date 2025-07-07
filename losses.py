@@ -27,7 +27,7 @@ def get_loss_fn(noise, graph, train, sampling_eps=1e-3, lv=False):
             perturbed_batch = graph.sample_transition(batch, sigma[:, None])        # perturbed_batch: [B, L], sigma[:, None]: [B] -> [B,1] for further broadcasting, the same as sigma.unsqueeze(1)
 
         log_score_fn = mutils.get_score_fn(model, train=train, sampling=False)
-        log_score = log_score_fn(perturbed_batch, sigma)        # [B, L, V(D)] predict log prob for each position
+        log_score = log_score_fn(perturbed_batch, sigma)        # [B, L, V] predict log score for each position
         loss = graph.score_entropy(log_score, sigma[:, None], perturbed_batch, batch)   # [B, L]
 
         loss = (dsigma[:, None] * loss).sum(dim=-1) # [B]

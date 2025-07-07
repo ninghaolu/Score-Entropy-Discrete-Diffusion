@@ -92,17 +92,17 @@ class Denoiser:
         self.noise = noise
 
     def update_fn(self, score_fn, x, t):
-        sigma = self.noise(t)[0]
+        sigma = self.noise(t)[0]        # [B, 1]
 
-        score = score_fn(x, sigma)
-        stag_score = self.graph.staggered_score(score, sigma)
-        probs = stag_score * self.graph.transp_transition(x, sigma)
+        score = score_fn(x, sigma)        # [B, L, V]
+        stag_score = self.graph.staggered_score(score, sigma)       # [B, L, V]
+        probs = stag_score * self.graph.transp_transition(x, sigma)         # [B, L, V]
         # truncate probabilities
         if self.graph.absorb:
             probs = probs[..., :-1]
         
         #return probs.argmax(dim=-1)
-        return sample_categorical(probs)
+        return sample_categorical(probs)        # [B, L]
                        
 
 def get_sampling_fn(config, graph, noise, batch_dims, eps, device):
@@ -121,28 +121,34 @@ def get_sampling_fn(config, graph, noise, batch_dims, eps, device):
 
 def get_pc_sampler(graph, noise, batch_dims, predictor, steps, denoise=True, eps=1e-5, device=torch.device('cpu'), proj_fun=lambda x: x):
     predictor = get_predictor(predictor)(graph, noise)
-    projector = proj_fun
+    projector = proj_fun            # for possible future usage, currently f(x) = x
     denoiser = Denoiser(graph, noise)
 
     @torch.no_grad()
     def pc_sampler(model):
         sampling_score_fn = mutils.get_score_fn(model, train=False, sampling=True)
-        x = graph.sample_limit(*batch_dims).to(device)      # [B, L]
-        timesteps = torch.linspace(1, eps, steps + 1, device=device)
-        dt = (1 - eps) / steps
+        x = graph.sample_limit(*batch_dims).to(device)      # [B, L], initialization, every position is [MASK]
+        timesteps = torch.linspace(1, eps, steps + 1, device=device)        # divide [1 -> \epsilon] into "steps" steps
+        dt = (1 - eps) / steps  # The step size for the reverse diffusion process.
 
+        # Reverse diffusion loop: from t = 1 → eps
         for i in range(steps):
+            # Construct the current time tensor for each sample in the batch.
             t = timesteps[i] * torch.ones(x.shape[0], 1, device=device)   # shape: [B, 1]
             x = projector(x)    # shape: [B, L]
+            # One reverse diffusion update step: x_t → x_{t-1}
             x = predictor.update_fn(sampling_score_fn, x, t, dt)    # shape: [B, L]
             
-
+        # Optional final denoising step (produces sharper results).
         if denoise:
             # denoising step
             x = projector(x)
+            # Use the final time step (eps) for denoising.
             t = timesteps[-1] * torch.ones(x.shape[0], 1, device=device)
-            x = denoiser.update_fn(sampling_score_fn, x, t)
-            
+            x = denoiser.update_fn(sampling_score_fn, x, t)     # [B, L]
+        # Return the final sampled token indices 
+        # Each token is an integer ID in [0, vocab_size)
+        # Shape: [B, L]
         return x
     
     return pc_sampler

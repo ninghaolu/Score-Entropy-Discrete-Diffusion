@@ -229,14 +229,23 @@ class Absorbing(Graph):
         pass
     
     def transp_transition(self, i, sigma):
-        sigma = unsqueeze_as(sigma, i[..., None])
-        edge = (-sigma).exp() * F.one_hot(i, num_classes=self.dim)
+        """For a regular token (not MASK), the model stays in the same state with probability exp(-\sigma).
+        For a MASK token, the model redistributes probability mass 1 - exp(-\sigma) to all other tokens,
+        and the exact distribution is determined by the model's predicted score."""
+        sigma = unsqueeze_as(sigma, i[..., None])       # i[..., None].shape = [B, L, 1], unsqueeze_as: [B, L, 1]
+        # Create a [B, L, V] tensor where only the index for token i is non-zero (1.0)
+        # Multiply that by exp(-σ) to assign "stay probability" to that position
+        edge = (-sigma).exp() * F.one_hot(i, num_classes=self.dim)   #  one-hot(i) ∈ {0,1}^{B × L × V}  each token is a one-hot vector of length V
+        # For positions where the current token is MASK (i == V-1),
+        # we need to allocate extra transition probability mass = 1 - exp(-σ)
+        # This will later be multiplied with the model's predicted score
+        # to distribute this mass to all possible tokens.
         edge += torch.where(
             i == self.dim - 1,
             1 - (-sigma).squeeze(-1).exp(),
             0
         )[..., None]
-        return edge
+        return edge     # [B, L, V]
 
     def sample_transition(self, i, sigma):
         move_chance = 1 - (-sigma).exp()
@@ -245,14 +254,21 @@ class Absorbing(Graph):
         return i_pert
     
     def staggered_score(self, score, dsigma):
+        """The logits are scaled by exp(dsigma) to reflect the noise strength of the current step.
+        Then, a constant is added to the MASK token (last dimension) to compensate the remaining
+        probability mass, ensuring that the final probabilities form a valid distribution."""
         score = score.clone() # yeah yeah whatever we should probably do this
-        extra_const = (1 - (dsigma).exp()) * score.sum(dim=-1)
-        score *= dsigma.exp()[:, None]
-        score[..., -1] += extra_const
-        return score
+        # compute constant to be added to MASK dimension
+        extra_const = (1 - (dsigma).exp()) * score.sum(dim=-1)       # [B, L]
+        # scale all logits
+        score *= dsigma.exp()[:, None]      # [B, L, V]
+        # add constant to last vocab entry (MASK)
+        score[..., -1] += extra_const      #  [B, L]
+        return score        # [B, L, V]
 
     def sample_limit(self, *batch_dims):
-        return (self.dim - 1) * torch.ones(*batch_dims, dtype=torch.int64)
+        return (self.dim - 1) * torch.ones(*batch_dims, dtype=torch.int64)      # self.dim = vocab_size + 1 (additional [MASK])
+    # therefore self.dim-1 is the token ID of [MASK]
 
     def score_entropy(self, score, sigma, x, x0):
         rel_ind = x == self.dim - 1
