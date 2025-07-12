@@ -24,7 +24,7 @@ def main():
         graph, noise, (args.batch_size, 1024), 'analytic', args.steps, device=device
     )
 
-    samples = sampling_fn(model)
+    samples = sampling_fn(model)        # [B, L]
 
     text_samples = tokenizer.batch_decode(samples)
     for i in text_samples:

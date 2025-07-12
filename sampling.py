@@ -128,7 +128,7 @@ def get_pc_sampler(graph, noise, batch_dims, predictor, steps, denoise=True, eps
     def pc_sampler(model):
         sampling_score_fn = mutils.get_score_fn(model, train=False, sampling=True)
         x = graph.sample_limit(*batch_dims).to(device)      # [B, L], initialization, every position is [MASK]
-        timesteps = torch.linspace(1, eps, steps + 1, device=device)        # divide [1 -> \epsilon] into "steps" steps
+        timesteps = torch.linspace(1, eps, steps + 1, device=device)        # divide [1 -> \epsilon] into "steps" steps     # [steps + 1]
         dt = (1 - eps) / steps  # The step size for the reverse diffusion process.
 
         # Reverse diffusion loop: from t = 1 → eps
